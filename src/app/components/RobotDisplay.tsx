@@ -282,30 +282,39 @@ export function RobotDisplay({ stats, isHappy = false }: RobotDisplayProps) {
           </g>
         </svg>
 
-        {/* Prendas equipadas como emojis flotantes */}
+        {/* Prendas equipadas integradas al robot */}
         <div className="absolute inset-0 pointer-events-none">
           {equippedClothing.map((item, index) => {
             if (!item) return null;
 
             let position = {};
             let size = "text-4xl";
+            let zIndex = 10;
 
             switch (item.type) {
               case "hat":
-                position = { top: "0px", left: "50%", transform: "translateX(-50%)" };
+                // Sombreros en la parte superior de la cabeza
+                position = { top: "-5px", left: "50%", transform: "translateX(-50%) scale(1.3)" };
                 size = "text-5xl";
+                zIndex = 20;
                 break;
               case "shirt":
-                position = { top: "145px", left: "50%", transform: "translateX(-50%)" };
-                size = "text-5xl";
+                // Camisas en el cuerpo
+                position = { top: "138px", left: "50%", transform: "translateX(-50%) scale(1.5)" };
+                size = "text-6xl";
+                zIndex = 5;
                 break;
               case "shoes":
-                position = { bottom: "8px", left: "50%", transform: "translateX(-50%)" };
+                // Zapatos en los pies
+                position = { bottom: "5px", left: "50%", transform: "translateX(-50%) scale(1.2)" };
                 size = "text-4xl";
+                zIndex = 15;
                 break;
               case "accessory":
-                position = { top: "75px", right: "20px" };
+                // Accesorios al lado derecho
+                position = { top: "70px", right: "10px", transform: "scale(1.3)" };
                 size = "text-4xl";
+                zIndex = 25;
                 break;
             }
 
@@ -313,13 +322,14 @@ export function RobotDisplay({ stats, isHappy = false }: RobotDisplayProps) {
               <motion.div
                 key={item.id}
                 className={`absolute ${size}`}
-                style={position}
+                style={{ ...position, zIndex }}
                 initial={{ scale: 0, rotate: -180 }}
                 animate={{ scale: 1, rotate: 0 }}
                 transition={{
                   delay: index * 0.1,
                   type: "spring",
-                  stiffness: 200
+                  stiffness: 200,
+                  damping: 10
                 }}
               >
                 {item.icon}

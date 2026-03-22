@@ -16,24 +16,45 @@ const GAME_WIDTH = 320;
 const GAME_HEIGHT = 500;
 const PLAYER_SIZE = 50;
 const ITEM_SIZE = 30;
-const GOOD_ITEMS = ["⭐", "💎", "🌟", "✨", "💫", "🔮"];
-const BAD_ITEMS = ["💣", "☠️", "⚠️", "💥"];
+const GOOD_ITEMS = ["⭐"]; // Solo estrella básica
+const BAD_ITEMS = ["💣"]; // Solo bomba
+const MAX_LIVES = 3;
+const HIT_COOLDOWN = 1.5; // 1.5 segundos de invencibilidad
 
 export default function CatchGame() {
   const navigate = useNavigate();
   const [playerX, setPlayerX] = useState(GAME_WIDTH / 2 - PLAYER_SIZE / 2);
   const [items, setItems] = useState<FallingItem[]>([]);
   const [score, setScore] = useState(0);
-  const [lives, setLives] = useState(3);
+  const [lives, setLives] = useState(MAX_LIVES);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isGameOver, setIsGameOver] = useState(false);
   const [speed, setSpeed] = useState(200);
+  const [isInvincible, setIsInvincible] = useState(false);
 
   const gameLoopRef = useRef<number>();
   const itemCounterRef = useRef(0);
   const lastTimeRef = useRef(Date.now());
   const spawnTimerRef = useRef(0);
   const speedIncreaseTimerRef = useRef(0);
+  const invincibilityTimerRef = useRef(0);
+
+  // Refs para sincronización
+  const playerXRef = useRef(playerX);
+  const livesRef = useRef(MAX_LIVES);
+  const isInvincibleRef = useRef(false);
+
+  useEffect(() => {
+    playerXRef.current = playerX;
+  }, [playerX]);
+
+  useEffect(() => {
+    livesRef.current = lives;
+  }, [lives]);
+
+  useEffect(() => {
+    isInvincibleRef.current = isInvincible;
+  }, [isInvincible]);
 
   useEffect(() => {
     if (isPlaying && !isGameOver) {
@@ -46,18 +67,27 @@ export default function CatchGame() {
     };
   }, [isPlaying, isGameOver]);
 
+  const endGame = () => {
+    setIsPlaying(false);
+    setIsGameOver(true);
+    const reward = Math.floor(score * 6);
+    addCoins(reward);
+  };
+
   const startGame = () => {
     setPlayerX(GAME_WIDTH / 2 - PLAYER_SIZE / 2);
     setItems([]);
     setScore(0);
-    setLives(3);
+    setLives(MAX_LIVES);
     setSpeed(200);
     setIsPlaying(true);
     setIsGameOver(false);
+    setIsInvincible(false);
     itemCounterRef.current = 0;
     lastTimeRef.current = Date.now();
     spawnTimerRef.current = 0;
     speedIncreaseTimerRef.current = 0;
+    invincibilityTimerRef.current = 0;
   };
 
   const startGameLoop = () => {
@@ -67,6 +97,15 @@ export default function CatchGame() {
       const currentTime = Date.now();
       const deltaTime = (currentTime - lastTimeRef.current) / 1000;
       lastTimeRef.current = currentTime;
+
+      // Manejar cooldown de invencibilidad
+      if (isInvincibleRef.current) {
+        invincibilityTimerRef.current += deltaTime;
+        if (invincibilityTimerRef.current >= HIT_COOLDOWN) {
+          setIsInvincible(false);
+          invincibilityTimerRef.current = 0;
+        }
+      }
 
       // Aumentar velocidad gradualmente cada 5 segundos
       speedIncreaseTimerRef.current += deltaTime;
@@ -87,16 +126,14 @@ export default function CatchGame() {
           x: Math.random() * (GAME_WIDTH - ITEM_SIZE),
           y: -ITEM_SIZE,
           type: isGood ? "good" : "bad",
-          icon: isGood
-            ? GOOD_ITEMS[Math.floor(Math.random() * GOOD_ITEMS.length)]
-            : BAD_ITEMS[Math.floor(Math.random() * BAD_ITEMS.length)],
+          icon: isGood ? "⭐" : "💣",
         };
         setItems((prev) => [...prev, newItem]);
       }
 
       // Actualizar posición de items y verificar colisiones
       setItems((prevItems) => {
-        const playerCenterX = playerX + PLAYER_SIZE / 2;
+        const playerCenterX = playerXRef.current + PLAYER_SIZE / 2;
         const playerY = GAME_HEIGHT - PLAYER_SIZE - 10;
 
         const itemsToKeep: FallingItem[] = [];
@@ -121,17 +158,21 @@ export default function CatchGame() {
           // Colisión más generosa
           if (distance < (PLAYER_SIZE + ITEM_SIZE) / 1.8) {
             if (item.type === "good") {
+              // Estrella: suma punto
               setScore((s) => s + 1);
-            } else {
-              setLives((l) => {
-                const newLives = l - 1;
-                if (newLives <= 0) {
-                  endGame();
-                }
-                return newLives;
-              });
+            } else if (!isInvincibleRef.current) {
+              // Bomba: solo daña si NO es invencible
+              const newLives = livesRef.current - 1;
+              setLives(newLives);
+              setIsInvincible(true);
+              invincibilityTimerRef.current = 0;
+
+              if (newLives <= 0) {
+                endGame();
+                return itemsToKeep;
+              }
             }
-            // No agregar este item (fue capturado)
+            // No agregar este item (fue capturado o golpeado)
           } else {
             // Mantener items que no fueron capturados y están en pantalla
             itemsToKeep.push({ ...item, y: newY });
@@ -145,13 +186,6 @@ export default function CatchGame() {
     };
 
     gameLoopRef.current = requestAnimationFrame(loop);
-  };
-
-  const endGame = () => {
-    setIsPlaying(false);
-    setIsGameOver(true);
-    const reward = Math.floor(score * 6);
-    addCoins(reward);
   };
 
   const movePlayer = (clientX: number) => {
@@ -255,19 +289,31 @@ export default function CatchGame() {
               bottom: 10,
               width: PLAYER_SIZE,
               height: PLAYER_SIZE,
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              background: isInvincible
+                ? 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)'
+                : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              border: isInvincible ? '3px solid #fbbf24' : '3px solid #764ba2',
+              opacity: isInvincible ? 0.7 : 1,
             }}
             animate={{
               y: isPlaying ? [0, -5, 0] : 0,
+              scale: isInvincible ? [1, 1.2, 1] : 1,
             }}
             transition={{
-              duration: 0.8,
+              duration: 0.5,
               repeat: Infinity,
               ease: "easeInOut",
             }}
           >
             🤖
           </motion.div>
+
+          {/* Indicador de vidas */}
+          <div className="absolute top-2 right-2 flex gap-1">
+            {Array.from({ length: lives }).map((_, i) => (
+              <Heart key={i} className="size-5 text-red-500 fill-red-500" />
+            ))}
+          </div>
 
           {/* Overlay de inicio */}
           {!isPlaying && !isGameOver && (
@@ -282,7 +328,10 @@ export default function CatchGame() {
                   Comenzar
                 </motion.button>
                 <p className="text-white text-sm px-4">
-                  Atrapa ⭐ buenas, evita 💣 malas
+                  Atrapa ⭐ estrellas, evita 💣 bombas
+                </p>
+                <p className="text-yellow-300 text-xs mt-2">
+                  Tienes {MAX_LIVES} vidas! ❤️❤️❤️
                 </p>
               </div>
             </div>
@@ -292,7 +341,7 @@ export default function CatchGame() {
         {/* Info */}
         <div className="mt-4 bg-white/80 backdrop-blur rounded-2xl p-4 text-center shadow-lg">
           <p className="text-sm text-slate-600">
-            Velocidad: x{(speed / 200).toFixed(1)} • Atrapa estrellas y evita bombas
+            Velocidad: x{(speed / 200).toFixed(1)} • ⭐ = +1 punto | 💣 = -1 vida {isInvincible && "🛡️ INVENCIBLE"}
           </p>
         </div>
       </div>
